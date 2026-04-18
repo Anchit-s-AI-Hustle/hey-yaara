@@ -102,10 +102,15 @@ export const fetchCallAudio = async (callId: string): Promise<string | null> => 
 export const uploadAudio = async (callId: string, audioBlob: Blob): Promise<string | null> => {
   try {
     const userId = await getUserId();
+    if (!userId) {
+      console.error("[CloudSync] uploadAudio: No userId!");
+      return null;
+    }
     const path = `${userId}/${Date.now()}.webm`;
     
     console.log("[CloudSync] 📤 Starting audio upload to path:", path);
     console.log("[CloudSync] 📤 Audio blob size:", audioBlob.size, "bytes");
+    console.log("[CloudSync] 📤 Call ID for update:", callId);
     
     const { data, error } = await supabase
       .storage
@@ -129,7 +134,7 @@ export const uploadAudio = async (callId: string, audioBlob: Blob): Promise<stri
           console.error("[CloudSync] ❌ Retry also failed:", retryError);
           return null;
         }
-        console.log("[CloudSync] ✅ Retry upload succeeded");
+        console.log("[CloudSync] ✅ Retry upload succeeded, path:", path);
       } else {
         return null;
       }
@@ -137,17 +142,19 @@ export const uploadAudio = async (callId: string, audioBlob: Blob): Promise<stri
       console.log("[CloudSync] ✅ Storage upload succeeded, path:", path || data?.path);
     }
     
-    // Now update the call record with the audio_path
-    console.log("[CloudSync] 💾 Updating call record with audio_path...");
+    // CRITICAL: Now update the call record with the audio_path
+    console.log("[CloudSync] 💾 Updating call record with audio_path:", path);
+    console.log("[CloudSync] 💾 Using callId:", callId);
+    
     const { error: updateError } = await supabase
       .from(CALLS_TABLE)
       .update({ audio_path: path })
       .eq("id", callId);
     
     if (updateError) {
-      console.error("[CloudSync] ❌ Failed to update audio_path:", updateError);
+      console.error("[CloudSync] ❌ Failed to update audio_path:", updateError.message, updateError);
     } else {
-      console.log("[CloudSync] ✅ audio_path updated successfully");
+      console.log("[CloudSync] ✅ audio_path updated successfully in DB");
     }
     
     return path;
@@ -464,26 +471,60 @@ export const finalizeCall = async ({
   userId: string;
 }) => {
   try {
-    const { error } = await supabase
+    // Build the update object - only update if we have values
+    const updateData: any = {
+      user_id: userId,
+      duration: duration,
+      start_time: startTime,
+      end_time: endTime,
+      status: "completed",
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Only include audio_path if it's not null/undefined
+    if (audioPath) {
+      updateData.audio_path = audioPath;
+      console.log("[CloudSync] finalizeCall: Setting audio_path:", audioPath);
+    } else {
+      console.log("[CloudSync] finalizeCall: audioPath is null, not updating");
+    }
+    
+    // Only include transcript if we have it
+    if (transcriptData.finalTranscript) {
+      updateData.transcript = transcriptData.finalTranscript;
+      updateData.transcript_chat = transcriptData.chatTranscript || '';
+      updateData.transcript_ai = transcriptData.aiTranscript || '';
+      console.log("[CloudSync] finalizeCall: Setting transcript, length:", transcriptData.finalTranscript.length);
+    } else {
+      console.log("[CloudSync] finalizeCall: No transcript to save");
+    }
+    
+    const { error, data } = await supabase
       .from(CALLS_TABLE)
-      .upsert({
-        id: callId,
-        user_id: userId,
-        audio_path: audioPath,
-        transcript: transcriptData.finalTranscript || '',
-        transcript_chat: transcriptData.chatTranscript || '',
-        transcript_ai: transcriptData.aiTranscript || '',
-        duration: duration,
-        start_time: startTime,
-        end_time: endTime,
-        status: "completed",
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
+      .eq("id", callId)
       .select();
-    if (error) throw error;
-    console.log("[CloudSync] finalizeCall: Call updated successfully");
+    
+    if (error) {
+      console.error("[CloudSync] finalizeCall ERROR:", error.message, error);
+      // Try insert as fallback
+      console.log("[CloudSync] Trying insert as fallback...");
+      const { error: insertError } = await supabase
+        .from(CALLS_TABLE)
+        .insert({
+          ...updateData,
+          id: callId,
+        });
+      if (insertError) {
+        console.error("[CloudSync] Insert fallback also failed:", insertError);
+      } else {
+        console.log("[CloudSync] Insert fallback succeeded");
+      }
+    } else {
+      console.log("[CloudSync] finalizeCall: Call updated successfully, data:", data);
+    }
   } catch (err) {
-    console.error("[CloudSync] finalizeCall error:", err);
+    console.error("[CloudSync] finalizeCall exception:", err);
   }
 };
 
