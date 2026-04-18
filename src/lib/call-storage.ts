@@ -35,9 +35,9 @@ export interface CallRecord {
   endTime:    string;
   duration:   number;
   status:     "completed" | "failed" | string;
-  transcript: TranscriptLine[];
-  audioBlob:  string | null; // data URL (legacy, for backwards compatibility)
-  audioPath?:  string | null; // Supabase Storage path (new architecture)
+  transcript: string | TranscriptLine[]; // String from DB, array for legacy
+  audioBlob:  string | null;
+  audioPath?:  string | null;
   updatedAt?: string;
 }
 
