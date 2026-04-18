@@ -66,19 +66,26 @@ const statusLabel = (status: string) => {
 };
 
 const downloadTranscript = (call: CallRecord) => {
-  // Filter transcript to Roman script only (remove non-Roman characters)
-  const lines = (call.transcript ?? [])
-    .filter(t => t.role !== "system")
-    .map(t => {
-      const ts = t.timestamp ? new Date(t.timestamp).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
-      const who = t.role === "user" ? "You" : "Yaara";
-      // Filter text to Roman script only (basic Latin characters, numbers, punctuation)
-      // Keep common punctuation and spaces, remove other non-ASCII characters
-      const romanText = t.text.replace(/[^\x00-\x7F]/g, ''); // Remove non-ASCII characters
-      return ts ? `[${ts}] ${who}: ${romanText}` : `${who}: ${romanText}`;
-    })
-    .filter(line => line.trim().length > 0) // Remove empty lines
-    .join("\n\n");
+  // Handle both string and array transcript formats
+  const transcriptData = call.transcript;
+  let lines = "";
+  
+  if (Array.isArray(transcriptData)) {
+    // Legacy array format
+    lines = (transcriptData)
+      .filter(t => t.role !== "system")
+      .map(t => {
+        const ts = t.timestamp ? new Date(t.timestamp).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
+        const who = t.role === "user" ? "You" : "Yaara";
+        const romanText = t.text.replace(/[^\x00-\x7F]/g, ''); // Remove non-ASCII characters
+        return ts ? `[${ts}] ${who}: ${romanText}` : `${who}: ${romanText}`;
+      })
+      .filter(line => line.trim().length > 0)
+      .join("\n\n");
+  } else if (typeof transcriptData === 'string' && transcriptData) {
+    // New string format - already formatted
+    lines = transcriptData;
+  }
 
   if (!lines.trim()) {
     alert("No transcript available for this call.");
@@ -156,7 +163,29 @@ const downloadTranscript = (call: CallRecord) => {
 
 const CallCard = ({ call, onDelete }: { call: CallRecord; onDelete: () => void }) => {
   const [expanded,  setExpanded]  = useState(false);
-  const msgs = (call.transcript ?? []).filter(t => t.role !== "system");
+  
+  // Handle both string transcript (new) and array transcript (legacy)
+  const transcriptData = call.transcript;
+  let msgs: Array<{id?: string; role: string; text: string; timestamp?: string}> = [];
+  
+  if (Array.isArray(transcriptData)) {
+    // Legacy array format
+    msgs = transcriptData.filter((t: any) => t.role !== "system");
+  } else if (typeof transcriptData === 'string' && transcriptData) {
+    // New string format - parse into lines
+    // Format: "You: message\n\nYaara: message"
+    const lines = transcriptData.split('\n\n').filter(l => l.trim());
+    msgs = lines.map((line, i) => {
+      const isUser = line.toLowerCase().startsWith('you:');
+      const text = line.replace(/^(You|Yaara):\s*/i, '').trim();
+      return {
+        id: `msg-${i}`,
+        role: isUser ? 'user' : 'assistant',
+        text: text,
+        timestamp: undefined
+      };
+    });
+  }
 
    const handleShare = async () => {
      try {
