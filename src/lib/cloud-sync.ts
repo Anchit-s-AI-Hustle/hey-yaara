@@ -331,14 +331,20 @@ export const fetchAllCallsFromAllUsers = async () => {
   return [];
 };
 
+// STEP 5: FIX MESSAGE INSERT - Save EVERY message during call
 export const saveMessage = async (callId: string, role: string, text: string) => {
   try {
+    if (!callId || !text) {
+      console.warn("[CloudSync] saveMessage: Missing callId or text");
+      return;
+    }
     // Ensure text is only Roman English script
     const romanText = toRomanScript(text || '');
     if (!romanText) {
       console.warn("[CloudSync] saveMessage: No Roman text to save");
       return;
     }
+    console.log("[CloudSync] 📝 Saving message:", role, romanText.substring(0, 30));
     const { error } = await supabase
       .from("yaara_messages")
       .insert({
@@ -346,9 +352,27 @@ export const saveMessage = async (callId: string, role: string, text: string) =>
         role,
         text: romanText,
       });
-    if (error) throw error;
+    if (error) {
+      console.error("[CloudSync] ❌ saveMessage error:", error.message);
+      // Retry once
+      console.log("[CloudSync] 🔄 Retrying message save...");
+      const retry = await supabase
+        .from("yaara_messages")
+        .insert({
+          call_id: callId,
+          role,
+          text: romanText,
+        });
+      if (retry.error) {
+        console.error("[CloudSync] ❌ Retry also failed:", retry.error);
+      } else {
+        console.log("[CloudSync] ✅ Message saved on retry");
+      }
+    } else {
+      console.log("[CloudSync] ✅ Message saved successfully");
+    }
   } catch (err) {
-    console.error("[CloudSync] saveMessage error:", err);
+    console.error("[CloudSync] saveMessage exception:", err);
   }
 };
 
