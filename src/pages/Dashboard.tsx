@@ -264,7 +264,16 @@ const CallCard = ({ call, onDelete }: { call: CallRecord; onDelete: () => void }
       {/* Expanded transcript */}
       {expanded && msgs.length > 0 && (
         <div className="border-t border-white/5 px-4 pb-4 pt-3 md:px-5">
-          <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Full Transcript</p>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Full Transcript</p>
+            <button 
+              onClick={() => downloadTranscript(call)} 
+              className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-2 py-1 text-xs font-bold text-amber-400 transition hover:bg-amber-500/20"
+            >
+              <Download className="h-3 w-3" />
+              Download PDF
+            </button>
+          </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
             {msgs.map((msg, i) => (
               <div
