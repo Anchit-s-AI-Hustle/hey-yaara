@@ -274,7 +274,7 @@ export const upsertRemoteCall = async (call: any) => {
       .upsert({
         id: call.id,
         user_id: userId,
-        user_mobile: call.userMobile || '',
+        // user_mobile removed - using user_id only
         start_time: call.startTime,
         end_time: call.endTime,
         duration: call.duration ?? 0,
@@ -471,7 +471,7 @@ export const endCallPipeline = async ({
   endTime,
 }: {
   callId: string;
-  audioBlob: Blob;
+  audioBlob: Blob | null | undefined;
   duration: number;
   startTime: string;
   endTime: string;
@@ -479,6 +479,20 @@ export const endCallPipeline = async ({
   try {
     const userId = await getUserId();
     if (!userId) throw new Error("User not authenticated");
+
+    // NULL GUARDS - safety first
+    if (!callId) {
+      console.error("[CloudSync] ❌ No callId provided");
+      return;
+    }
+    if (!audioBlob) {
+      console.error("[CloudSync] ❌ No audioBlob - cannot process call");
+      return;
+    }
+    if (audioBlob.size === 0) {
+      console.error("[CloudSync] ❌ Empty audio blob");
+      return;
+    }
 
     console.log("[CloudSync] 🔧 End call pipeline started for callId:", callId);
     console.log("[CloudSync] 🔧 User ID:", userId);
@@ -492,7 +506,6 @@ export const endCallPipeline = async ({
       .insert({
         id: callId,
         user_id: userId,
-        user_mobile: '',
         start_time: startTime,
         end_time: endTime,
         duration: duration,

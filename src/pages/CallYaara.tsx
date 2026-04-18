@@ -57,10 +57,15 @@ const CallYaara = () => {
    } = useAudioRecorder();
    const currentCallIdRef = useRef<string | null>(null);
 
-  // Voice gender selection
+  // Voice gender selection - CONSISTENT once selected (never changes mid-call)
   const [voiceGender, setVoiceGender] = useState<"female" | "male">(user?.gender === "male" ? "male" : "female");
-  const [sessionVoiceGender, setSessionVoiceGender] = useState<"female" | "male">("female");
-  const [sessionVoiceId, setSessionVoiceId] = useState<string>(DEFAULT_FEMALE_VOICE_ID);
+  
+  // Store selected voice ONCE per call - NEVER recalculate mid-call
+  const selectedVoiceRef = useRef<string>(voiceGender === "female" ? DEFAULT_FEMALE_VOICE_ID : DEFAULT_MALE_VOICE_ID);
+  
+  // For session - use the ref value (consistent throughout call)
+  const sessionVoiceId = selectedVoiceRef.current;
+  const sessionVoiceGender: "female" | "male" = voiceGender;
 
   const callStartTimeRef = useRef<Date | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -75,6 +80,8 @@ const CallYaara = () => {
   const chooseVoice = useCallback((gender: "female" | "male") => {
     if (callState !== 'idle') return;
     setVoiceGender(gender);
+    // ALSO update the ref to keep them in sync
+    selectedVoiceRef.current = gender === "female" ? DEFAULT_FEMALE_VOICE_ID : DEFAULT_MALE_VOICE_ID;
   }, [callState]);
 
   // Helper to ensure text is only Roman English script (ASCII only)
@@ -163,8 +170,7 @@ const CallYaara = () => {
 
     const timer = setTimeout(() => {
       flushSync(() => {
-        setSessionVoiceGender(voiceGender);
-        setSessionVoiceId(getSessionVoiceId());
+        // Use the REF value - NEVER recalculate mid-call
         setCallState('active');
       });
     }, 1500);
